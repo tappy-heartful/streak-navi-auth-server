@@ -12,10 +12,11 @@ const PORT = process.env.PORT || 3000;
 const LINE_CLIENT_ID = process.env.LINE_CLIENT_ID;
 
 // Firebase Admin 初期化（サービスアカウントJSONファイルを使う）
+const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
+serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
+
 admin.initializeApp({
-  credential: admin.credential.cert(
-    JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
-  ),
+  credential: admin.credential.cert(serviceAccount),
 });
 
 app.use(cors());
