@@ -1,14 +1,22 @@
 import express from 'express';
 import fetch from 'node-fetch';
-import jwt from 'jsonwebtoken';
 import cors from 'cors';
+import admin from 'firebase-admin';
+import dotenv from 'dotenv';
+
+dotenv.config(); // .env を読み込む
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// 安全な秘密鍵（本番は .env に保存して使う）
-const JWT_SECRET = process.env.JWT_SECRET;
 const LINE_CLIENT_ID = process.env.LINE_CLIENT_ID;
+
+// Firebase Admin 初期化（サービスアカウントJSONファイルを使う）
+admin.initializeApp({
+  credential: admin.credential.cert(
+    JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT)
+  ),
+});
 
 app.use(cors());
 app.use(express.json());
@@ -19,6 +27,7 @@ app.post('/verify-line-token', async (req, res) => {
   if (!idToken) return res.status(400).json({ error: 'Missing idToken' });
 
   try {
+    // LINEのid_tokenを検証
     const response = await fetch('https://api.line.me/oauth2/v2.1/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -29,15 +38,16 @@ app.post('/verify-line-token', async (req, res) => {
     });
 
     const result = await response.json();
+
     if (result.error) {
       console.error('LINE token verify failed:', result);
       return res.status(401).json({ error: 'Invalid LINE token' });
     }
 
-    const userId = result.sub;
+    const lineUserId = result.sub; // LINEのユーザー固有ID
 
-    // 独自トークンを発行（1時間有効）
-    const customToken = jwt.sign({ userId }, JWT_SECRET, { expiresIn: '1h' });
+    // Firebaseカスタムトークンを発行
+    const customToken = await admin.auth().createCustomToken(lineUserId);
 
     res.json({ customToken });
   } catch (err) {
