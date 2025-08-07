@@ -6,9 +6,9 @@ import cors from 'cors';
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// TODO 安全な秘密鍵（本番は .env に保存して使う）
-const JWT_SECRET = process.env.JWT_SECRET || '126dea4d33dd7deca8d6ee9b7870237f';
-const LINE_CLIENT_ID = process.env.LINE_CLIENT_ID || '2007808275';
+// 安全な秘密鍵（本番は .env に保存して使う）
+const JWT_SECRET = process.env.JWT_SECRET;
+const LINE_CLIENT_ID = process.env.LINE_CLIENT_ID;
 
 app.use(cors());
 app.use(express.json());
