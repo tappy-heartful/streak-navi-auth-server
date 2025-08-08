@@ -47,6 +47,29 @@ app.post('/verify-line-token', async (req, res) => {
       return res.status(401).json({ error: 'Invalid LINE token' });
     }
 
+    // ここから追加検証
+    // audienceが正しいLINEクライアントIDであること
+
+    if (result.aud !== LINE_CLIENT_ID) {
+      console.error('Invalid aud in ID token:', result.aud);
+      return res.status(401).json({ error: 'Invalid aud in ID token' });
+    }
+
+    // トークンが有効期限内であること;
+    const now = Math.floor(Date.now() / 1000);
+    if (typeof result.exp !== 'number' || result.exp < now) {
+      console.error('ID token expired:', result.exp);
+      return res.status(401).json({ error: 'ID token expired' });
+    }
+
+    // 発行者がLINE公式であること;
+    const validIssuers = ['https://access.line.me', 'https://access.line.me/'];
+    if (!validIssuers.includes(result.iss)) {
+      console.error('Invalid iss in ID token:', result.iss);
+      return res.status(401).json({ error: 'Invalid iss in ID token' });
+    }
+    // ここまで追加検証
+
     const lineUserId = result.sub; // LINEのユーザー固有ID
 
     // ハッシュ化してカスタムトークン発行
