@@ -3,7 +3,7 @@ import fetch from 'node-fetch';
 import cors from 'cors';
 import admin from 'firebase-admin';
 import dotenv from 'dotenv';
-import crypto from 'crypto'; // 先頭に追加
+import argon2 from 'argon2'; // ← 追加
 
 dotenv.config(); // .env を読み込む
 
@@ -46,10 +46,12 @@ app.post('/verify-line-token', async (req, res) => {
       return res.status(401).json({ error: 'Invalid LINE token' });
     }
 
-    const lineUserId = result.sub; // LINEのユーザー固有ID
+    const lineUserId = result.sub;
 
-    // ハッシュ化してカスタムトークン発行
-    const hashedLineUserId = sha256(lineUserId);
+    // Argon2でハッシュ化してカスタムトークンのUIDに使用
+    const hashedLineUserId = await argon2Hash(lineUserId);
+
+    // Firebase Authentication のカスタムトークンを発行
     const customToken = await admin.auth().createCustomToken(hashedLineUserId);
 
     res.json({ customToken });
@@ -67,7 +69,18 @@ app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
 
-// ハッシュ関数
-function sha256(input) {
-  return crypto.createHash('sha256').update(input).digest('hex');
+// Argon2ハッシュ関数（UID生成用）
+async function argon2Hash(input) {
+  // UIDには「/」や「$」などが含まれているとFirebaseで不正扱いされるため注意
+  const hash = await argon2.hash(input, {
+    type: argon2.argon2id,
+    timeCost: 3,
+    memoryCost: 2 ** 16,
+    hashLength: 32,
+  });
+
+  // Firebase UIDとして使うため、base64部分だけ抜き出して返す（簡易対応）
+  // $argon2id$v=19$m=65536,t=3,p=1$[salt]$[hash] の最後の部分を取り出す
+  const base64Hash = hash.split('$').pop();
+  return base64Hash.replace(/\W/g, ''); // 記号を除去してUIDに使える形に整形
 }
