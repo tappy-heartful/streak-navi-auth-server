@@ -3,6 +3,7 @@ import fetch from 'node-fetch';
 import cors from 'cors';
 import admin from 'firebase-admin';
 import dotenv from 'dotenv';
+import crypto from 'crypto'; // 先頭に追加
 
 dotenv.config(); // .env を読み込む
 
@@ -47,8 +48,9 @@ app.post('/verify-line-token', async (req, res) => {
 
     const lineUserId = result.sub; // LINEのユーザー固有ID
 
-    // Firebaseカスタムトークンを発行
-    const customToken = await admin.auth().createCustomToken(lineUserId);
+    // ハッシュ化してカスタムトークン発行
+    const hashedLineUserId = sha256(lineUserId);
+    const customToken = await admin.auth().createCustomToken(hashedLineUserId);
 
     res.json({ customToken });
   } catch (err) {
@@ -64,3 +66,8 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
+
+// ハッシュ関数
+function sha256(input) {
+  return crypto.createHash('sha256').update(input).digest('hex');
+}
