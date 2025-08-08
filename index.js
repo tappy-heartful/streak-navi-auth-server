@@ -11,6 +11,7 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 const LINE_CLIENT_ID = process.env.LINE_CLIENT_ID;
+const LINE_CLIENT_SECRET = process.env.LINE_CLIENT_SECRET;
 
 // Firebase Admin 初期化（サービスアカウントJSONファイルを使う）
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -55,6 +56,43 @@ app.post('/verify-line-token', async (req, res) => {
     res.json({ customToken });
   } catch (err) {
     console.error('Server error:', err);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/exchange-line-token', async (req, res) => {
+  try {
+    const { code, redirectUri } = req.body;
+
+    if (!code || !redirectUri) {
+      return res.status(400).json({ error: 'Missing code or redirectUri' });
+    }
+
+    // LINEのアクセストークン取得APIへPOSTリクエスト
+    const response = await fetch('https://api.line.me/oauth2/v2.1/token', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: new URLSearchParams({
+        grant_type: 'authorization_code',
+        code: code,
+        redirect_uri: redirectUri,
+        client_id: LINE_CLIENT_ID,
+        client_secret: LINE_CLIENT_SECRET,
+      }),
+    });
+
+    if (!response.ok) {
+      const errorBody = await response.text();
+      console.error('LINE token exchange error:', errorBody);
+      return res.status(500).json({ error: 'Failed to exchange token' });
+    }
+
+    const tokenData = await response.json();
+
+    // 取得したアクセストークン、IDトークンをそのまま返す（必要に応じてIDトークンの検証も可能）
+    res.json(tokenData);
+  } catch (err) {
+    console.error('Server error on token exchange:', err);
     res.status(500).json({ error: 'Server error' });
   }
 });
