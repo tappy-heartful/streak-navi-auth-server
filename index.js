@@ -24,6 +24,18 @@ admin.initializeApp({
 app.use(cors());
 app.use(express.json());
 
+// ランダムソルト生成関数
+function generateSalt(length = 16) {
+  return crypto.randomBytes(length).toString('hex');
+}
+
+// ソルト付きハッシュ化
+function sha256WithSalt(input, salt) {
+  return crypto
+    .createHash('sha256')
+    .update(input + salt)
+    .digest('hex');
+}
 // POST LINEログインし、カスタムトークンとプロフィール情報を返却する
 app.post('/line-login', async (req, res) => {
   const { code, redirectUri } = req.body;
@@ -69,11 +81,28 @@ app.post('/line-login', async (req, res) => {
     });
     const profile = await profileRes.json();
 
-    // 4. Firebase カスタムトークン作成
-    const hashedLineUserId = sha256(verifyData.sub);
+    // 4. ソルト取得または生成（Firestoreに保存）
+    const userDocRef = admin
+      .firestore()
+      .collection('userSalts')
+      .doc(verifyData.sub);
+    const userDoc = await userDocRef.get();
+
+    let salt;
+    if (userDoc.exists) {
+      salt = userDoc.data().salt;
+    } else {
+      salt = generateSalt();
+      await userDocRef.set({ salt });
+    }
+
+    // 5. ソルト付きハッシュ化
+    const hashedLineUserId = sha256WithSalt(verifyData.sub, salt);
+
+    // 6. Firebase カスタムトークン作成
     const customToken = await admin.auth().createCustomToken(hashedLineUserId);
 
-    // 5. フロントへ返す（トークン類は返さない）
+    // 7. フロントへ返す（トークン類は返さない）
     res.json({ customToken, profile });
   } catch (err) {
     console.error(err);
@@ -88,8 +117,3 @@ app.get('/', (req, res) => {
 app.listen(PORT, () => {
   console.log(`Server is running on http://localhost:${PORT}`);
 });
-
-// ハッシュ関数
-function sha256(input) {
-  return crypto.createHash('sha256').update(input).digest('hex');
-}
