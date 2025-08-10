@@ -87,26 +87,6 @@ app.post('/line-login', async (req, res) => {
     });
     const profile = await profileRes.json();
 
-    // // 4. saltDocIdを取得
-    // const saltDocId = await getUserSaltDocId(verifyData.sub);
-
-    // // 5. ソルト取得または生成
-    // const saltDocRef = firestore.collection('userSalts').doc(saltDocId);
-    // const saltDoc = await saltDocRef.get();
-
-    // let salt;
-    // if (saltDoc.exists) {
-    //   salt = saltDoc.data().salt;
-    // } else {
-    //   salt = generateSalt();
-    //   await saltDocRef.set({ salt });
-    // }
-
-    // // 6. ソルト付きハッシュ化
-    // const hashedLineUserId = sha256WithSalt(verifyData.sub, salt);
-
-    // // 7. Firebase カスタムトークン作成
-    // const customToken = await admin.auth().createCustomToken(hashedLineUserId);
     // 5. ソルト取得または生成
     const hashedUserId = hashUserId(verifyData.sub);
 
