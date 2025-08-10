@@ -3,15 +3,17 @@ import fetch from 'node-fetch';
 import cors from 'cors';
 import admin from 'firebase-admin';
 import dotenv from 'dotenv';
-import crypto from 'crypto'; // 先頭に追加
+import crypto from 'crypto';
 
-dotenv.config(); // .env を読み込む
+dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
 const LINE_CLIENT_ID = process.env.LINE_CLIENT_ID;
 const LINE_CLIENT_SECRET = process.env.LINE_CLIENT_SECRET;
+const FIXED_SALT = process.env.SALT; // 固定ソルト（環境変数から）
+const FIXED_PEPPER = process.env.PEPPER; // 固定ペッパー（環境変数から）
 
 // Firebase Admin 初期化（サービスアカウントJSONファイルを使う）
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
@@ -24,22 +26,12 @@ admin.initializeApp({
 app.use(cors());
 app.use(express.json());
 
-// ランダムソルト生成関数
-function generateSalt(length = 16) {
-  return crypto.randomBytes(length).toString('hex');
-}
-
-// ソルト付きハッシュ化
-function sha256WithSalt(input, salt) {
+// SALT + PEPPER でハッシュ化
+function hashUserIdWithSaltPepper(userId) {
   return crypto
     .createHash('sha256')
-    .update(input + salt)
+    .update(FIXED_SALT + userId + FIXED_PEPPER)
     .digest('hex');
-}
-
-// LINEのユーザーIDを受け取ってハッシュ化した値をドキュメントIDとして使う例
-function hashUserId(lineUserId) {
-  return crypto.createHash('sha256').update(lineUserId).digest('hex');
 }
 
 // POST LINEログインし、カスタムトークンとプロフィール情報を返却する
@@ -87,30 +79,13 @@ app.post('/line-login', async (req, res) => {
     });
     const profile = await profileRes.json();
 
-    // 5. ソルト取得または生成
-    const hashedUserId = hashUserId(verifyData.sub);
+    // 4. 環境変数の固定SALT+PEPPERでハッシュ化
+    const hashedUserId = hashUserIdWithSaltPepper(verifyData.sub);
 
-    const userSaltDocRef = admin
-      .firestore()
-      .collection('userSalts')
-      .doc(hashedUserId);
-    const userSaltDoc = await userSaltDocRef.get();
+    // 5. Firebase カスタムトークン作成
+    const customToken = await admin.auth().createCustomToken(hashedUserId);
 
-    let salt;
-    if (userSaltDoc.exists) {
-      salt = userSaltDoc.data().salt;
-    } else {
-      salt = generateSalt();
-      await userSaltDocRef.set({ salt });
-    }
-
-    // 6. ソルト付きハッシュ化
-    const saltedHashedId = sha256WithSalt(verifyData.sub, salt);
-
-    // 7. Firebase カスタムトークン作成
-    const customToken = await admin.auth().createCustomToken(saltedHashedId);
-
-    // 8. フロントへ返す（トークン類は返さない）
+    // 6. フロントへ返す
     res.json({ customToken, profile });
   } catch (err) {
     console.error(err);
