@@ -23,7 +23,18 @@ admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
 
-app.use(cors());
+// --- CORS設定（Safari対策で明示的に許可） ---
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*'); // 必要に応じて特定ドメインに変更
+  res.header('Access-Control-Allow-Methods', 'GET,POST,OPTIONS');
+  res.header('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200); // プリフライト即時返却
+  }
+  next();
+});
+
+// JSONパース
 app.use(express.json());
 
 // SALT + PEPPER でハッシュ化
