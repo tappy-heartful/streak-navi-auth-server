@@ -24,13 +24,7 @@ admin.initializeApp({
 });
 
 // --- CORS設定 ---
-app.use(
-  cors({
-    origin: 'https://streak-navi.web.app', // フロントのURLに限定
-    methods: ['GET', 'POST', 'OPTIONS'],
-    allowedHeaders: ['Content-Type'],
-  })
-);
+app.use(cors());
 
 // JSONパース
 app.use(express.json());
