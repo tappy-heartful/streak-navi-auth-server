@@ -23,8 +23,14 @@ admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
 
-// --- CORS設定 ---
-app.use(cors());
+// --- 安全なCORS設定 ---
+app.use(
+  cors({
+    origin: 'https://streak-navi.web.app', // 許可するフロントURL
+    methods: ['GET', 'POST', 'OPTIONS'],
+    allowedHeaders: ['Content-Type'],
+  })
+);
 
 // JSONパース
 app.use(express.json());
