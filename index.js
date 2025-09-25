@@ -12,30 +12,28 @@ const PORT = process.env.PORT || 3000;
 
 const LINE_CLIENT_ID = process.env.LINE_CLIENT_ID;
 const LINE_CLIENT_SECRET = process.env.LINE_CLIENT_SECRET;
-const FIXED_SALT = process.env.SALT; // 固定ソルト（環境変数から）
-const FIXED_PEPPER = process.env.PEPPER; // 固定ペッパー（環境変数から）
+const FIXED_SALT = process.env.SALT;
+const FIXED_PEPPER = process.env.PEPPER;
 
-// Firebase Admin 初期化（サービスアカウントJSONファイルを使う）
+// Firebase Admin 初期化
 const serviceAccount = JSON.parse(process.env.FIREBASE_SERVICE_ACCOUNT);
 serviceAccount.private_key = serviceAccount.private_key.replace(/\\n/g, '\n');
-
 admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
 
-// --- 安全なCORS設定 ---
+// CORS設定
 app.use(
   cors({
-    origin: 'https://streak-navi.web.app', // 許可するフロントURL
+    origin: 'https://streak-navi.web.app',
     methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['Content-Type'],
   })
 );
 
-// JSONパース
 app.use(express.json());
 
-// SALT + PEPPER でハッシュ化
+// SALT+PEPPERでハッシュ化
 function hashUserIdWithSaltPepper(userId) {
   return crypto
     .createHash('sha256')
@@ -43,15 +41,59 @@ function hashUserIdWithSaltPepper(userId) {
     .digest('hex');
 }
 
-// POST LINEログインし、カスタムトークンとプロフィール情報を返却する
+// -------------------------------------
+// 1. クライアント用: state生成＆LINEログインURL返却
+// -------------------------------------
+app.get('/get-line-login-url', async (req, res) => {
+  try {
+    const state = crypto.randomBytes(16).toString('hex');
+    const createdAt = admin.firestore.FieldValue.serverTimestamp();
+
+    // Firestoreにstate保存
+    await admin
+      .firestore()
+      .collection('oauthStates')
+      .doc(state)
+      .set({ createdAt });
+
+    const redirectUri = encodeURIComponent(
+      'https://streak-navi.web.app/app/login/login.html'
+    );
+    const scope = 'openid profile';
+    const loginUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${LINE_CLIENT_ID}&redirect_uri=${redirectUri}&state=${state}&scope=${scope}`;
+
+    res.json({ loginUrl, state });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to generate login URL' });
+  }
+});
+
+// -------------------------------------
+// 2. LINEコールバック: state検証 + カスタムトークン生成
+// -------------------------------------
 app.post('/line-login', async (req, res) => {
-  const { code, redirectUri } = req.body;
-  if (!code || !redirectUri) {
-    return res.status(400).json({ error: 'Missing code or redirectUri' });
+  const { code, state, redirectUri } = req.body;
+  if (!code || !state || !redirectUri) {
+    return res
+      .status(400)
+      .json({ error: 'Missing code, state, or redirectUri' });
   }
 
   try {
-    // 1. LINE アクセストークン取得
+    // 1. state検証
+    const stateDoc = await admin
+      .firestore()
+      .collection('oauthStates')
+      .doc(state)
+      .get();
+    if (!stateDoc.exists) {
+      return res.status(400).json({ error: 'Invalid or expired state' });
+    }
+    // 検証済みなので削除
+    await admin.firestore().collection('oauthStates').doc(state).delete();
+
+    // 2. LINEアクセストークン取得
     const tokenRes = await fetch('https://api.line.me/oauth2/v2.1/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -68,7 +110,7 @@ app.post('/line-login', async (req, res) => {
       return res.status(401).json({ error: 'Token exchange failed' });
     }
 
-    // 2. IDトークン検証
+    // 3. IDトークン検証
     const verifyRes = await fetch('https://api.line.me/oauth2/v2.1/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -82,19 +124,17 @@ app.post('/line-login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid ID token' });
     }
 
-    // 3. プロフィール取得
+    // 4. プロフィール取得
     const profileRes = await fetch('https://api.line.me/v2/profile', {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
     const profile = await profileRes.json();
 
-    // 4. 環境変数の固定SALT+PEPPERでハッシュ化
-    const hashedUserId = hashUserIdWithSaltPepper(verifyData.sub);
-
     // 5. Firebase カスタムトークン作成
+    const hashedUserId = hashUserIdWithSaltPepper(verifyData.sub);
     const customToken = await admin.auth().createCustomToken(hashedUserId);
 
-    // 6. フロントへ返す
+    // 6. フロントへ返却
     res.json({ customToken, profile });
   } catch (err) {
     console.error(err);
@@ -102,10 +142,8 @@ app.post('/line-login', async (req, res) => {
   }
 });
 
-app.get('/', (req, res) => {
-  res.send('Auth server is running!');
-});
+app.get('/', (req, res) => res.send('Auth server is running!'));
 
-app.listen(PORT, () => {
-  console.log(`Server is running on http://localhost:${PORT}`);
-});
+app.listen(PORT, () =>
+  console.log(`Server running at http://localhost:${PORT}`)
+);
