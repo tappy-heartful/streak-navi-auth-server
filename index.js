@@ -149,18 +149,25 @@ app.listen(PORT, () =>
 );
 
 // ------------------------------
-// Firestore 全フィールド名抽出
+// Firestore 全フィールド名抽出（string型のみ）
 // ------------------------------
-async function getAllFieldNamesFromFirestore() {
+async function getAllStringFieldNamesFromFirestore() {
   const db = admin.firestore();
   const fieldSet = new Set();
 
-  // 再帰的にフィールドを収集
+  // 再帰的にフィールドを収集（string型のみ）
   function collectFields(data) {
     for (const key of Object.keys(data)) {
-      fieldSet.add(key);
       const val = data[key];
-      if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
+
+      if (typeof val === 'string') {
+        fieldSet.add(key); // string型なら登録
+      } else if (
+        typeof val === 'object' &&
+        val !== null &&
+        !Array.isArray(val)
+      ) {
+        // ネストがあれば再帰的に探索
         collectFields(val);
       }
     }
@@ -171,6 +178,8 @@ async function getAllFieldNamesFromFirestore() {
     const snap = await collRef.get();
     for (const docSnap of snap.docs) {
       collectFields(docSnap.data());
+
+      // サブコレクションも再帰的に探索
       const subcolls = await docSnap.ref.listCollections();
       for (const sub of subcolls) {
         await scanCollection(sub);
@@ -189,7 +198,7 @@ async function getAllFieldNamesFromFirestore() {
 // 例: APIエンドポイント化
 app.get('/list-fields', async (req, res) => {
   try {
-    const fields = await getAllFieldNamesFromFirestore();
+    const fields = await getAllStringFieldNamesFromFirestore();
 
     // セキュリティルール用のコード断片を生成
     const ruleSnippet = `
