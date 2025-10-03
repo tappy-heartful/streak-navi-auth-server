@@ -147,3 +147,62 @@ app.get('/', (req, res) => res.send('Auth server is running!'));
 app.listen(PORT, () =>
   console.log(`Server running at http://localhost:${PORT}`)
 );
+
+// ------------------------------
+// Firestore 全フィールド名抽出
+// ------------------------------
+async function getAllFieldNamesFromFirestore() {
+  const db = admin.firestore();
+  const fieldSet = new Set();
+
+  // 再帰的にフィールドを収集
+  function collectFields(data) {
+    for (const key of Object.keys(data)) {
+      fieldSet.add(key);
+      const val = data[key];
+      if (typeof val === 'object' && val !== null && !Array.isArray(val)) {
+        collectFields(val);
+      }
+    }
+  }
+
+  // 再帰的にコレクション走査
+  async function scanCollection(collRef) {
+    const snap = await collRef.get();
+    for (const docSnap of snap.docs) {
+      collectFields(docSnap.data());
+      const subcolls = await docSnap.ref.listCollections();
+      for (const sub of subcolls) {
+        await scanCollection(sub);
+      }
+    }
+  }
+
+  const rootColls = await db.listCollections();
+  for (const coll of rootColls) {
+    await scanCollection(coll);
+  }
+
+  return Array.from(fieldSet);
+}
+
+// 例: APIエンドポイント化
+app.get('/list-fields', async (req, res) => {
+  try {
+    const fields = await getAllFieldNamesFromFirestore();
+
+    // セキュリティルール用のコード断片を生成
+    const ruleSnippet = `
+      function areAllStringsSafe(data) {
+        return !( ${fields
+          .map((f) => `('${f}' in data && containsDangerousHTML(data.${f}))`)
+          .join(' ||\n           ')} );
+      }
+    `.trim();
+
+    res.json({ fields, ruleSnippet });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Failed to scan Firestore' });
+  }
+});
