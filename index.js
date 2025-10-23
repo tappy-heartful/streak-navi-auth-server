@@ -23,9 +23,21 @@ admin.initializeApp({
 });
 
 // CORS設定
+const allowedOrigins = [
+  'https://streak-navi.web.app',
+  'https://streak-navi-test.web.app',
+];
+
 app.use(
   cors({
-    origin: 'https://streak-navi.web.app',
+    origin: function (origin, callback) {
+      // originが空（curlや同一オリジン）も許可する場合は origin || '' で対応
+      if (!origin || allowedOrigins.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(new Error('Not allowed by CORS'));
+      }
+    },
     methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['Content-Type'],
   })
