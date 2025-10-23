@@ -68,9 +68,18 @@ app.get('/get-line-login-url', async (req, res) => {
       .doc(state)
       .set({ createdAt });
 
-    const redirectUri = encodeURIComponent(
-      'https://streak-navi.web.app/app/login/login.html'
-    );
+    const origin = req.headers.origin;
+    let redirectUri;
+    if (origin === 'https://streak-navi-test.web.app') {
+      redirectUri = encodeURIComponent(
+        'https://streak-navi-test.web.app/app/login/login.html'
+      );
+    } else {
+      redirectUri = encodeURIComponent(
+        'https://streak-navi.web.app/app/login/login.html'
+      );
+    }
+
     const scope = 'openid profile';
     const loginUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${LINE_CLIENT_ID}&redirect_uri=${redirectUri}&state=${state}&scope=${scope}`;
 
@@ -159,71 +168,3 @@ app.get('/', (req, res) => res.send('Auth server is running!'));
 app.listen(PORT, () =>
   console.log(`Server running at http://localhost:${PORT}`)
 );
-
-// ------------------------------
-// Firestore 全フィールド名抽出（string型のみ）
-// ------------------------------
-async function getAllStringFieldNamesFromFirestore() {
-  const db = admin.firestore();
-  const fieldSet = new Set();
-
-  // 再帰的にフィールドを収集（string型のみ）
-  function collectFields(data) {
-    for (const key of Object.keys(data)) {
-      const val = data[key];
-
-      if (typeof val === 'string') {
-        fieldSet.add(key); // string型なら登録
-      } else if (
-        typeof val === 'object' &&
-        val !== null &&
-        !Array.isArray(val)
-      ) {
-        // ネストがあれば再帰的に探索
-        collectFields(val);
-      }
-    }
-  }
-
-  // 再帰的にコレクション走査
-  async function scanCollection(collRef) {
-    const snap = await collRef.get();
-    for (const docSnap of snap.docs) {
-      collectFields(docSnap.data());
-
-      // サブコレクションも再帰的に探索
-      const subcolls = await docSnap.ref.listCollections();
-      for (const sub of subcolls) {
-        await scanCollection(sub);
-      }
-    }
-  }
-
-  const rootColls = await db.listCollections();
-  for (const coll of rootColls) {
-    await scanCollection(coll);
-  }
-
-  return Array.from(fieldSet);
-}
-
-// 例: APIエンドポイント化
-app.get('/list-fields', async (req, res) => {
-  try {
-    const fields = await getAllStringFieldNamesFromFirestore();
-
-    // セキュリティルール用のコード断片を生成
-    const ruleSnippet = `
-      function areAllStringsSafe(data) {
-        return !( ${fields
-          .map((f) => `('${f}' in data && containsDangerousHTML(data.${f}))`)
-          .join(' ||\n           ')} );
-      }
-    `.trim();
-
-    res.json({ fields, ruleSnippet });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Failed to scan Firestore' });
-  }
-});
