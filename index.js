@@ -173,10 +173,15 @@ app.post('/resolve-map-url', async (req, res) => {
   }
 
   try {
-    // fetchでリダイレクトを追跡して最終URLを取得
+    // User-Agent を固定するとモバイル/アプリ誘導の差異が消えて安定する
     const response = await fetch(url, {
       method: 'GET',
       redirect: 'follow',
+      headers: {
+        'User-Agent':
+          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
+          '(KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+      },
     });
 
     const finalUrl = response.url;
