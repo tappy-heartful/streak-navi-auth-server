@@ -163,6 +163,34 @@ app.post('/line-login', async (req, res) => {
   }
 });
 
+// -------------------------------------
+// Google Maps 短縮URL → 正規URL展開API
+// -------------------------------------
+app.post('/resolve-map-url', async (req, res) => {
+  const { url } = req.body;
+  if (!url) {
+    return res.status(400).json({ error: 'Missing url' });
+  }
+
+  try {
+    // fetchでリダイレクトを追跡して最終URLを取得
+    const response = await fetch(url, {
+      method: 'GET',
+      redirect: 'follow',
+    });
+
+    const finalUrl = response.url;
+    if (!finalUrl) {
+      return res.status(500).json({ error: 'Failed to resolve URL' });
+    }
+
+    res.json({ finalUrl });
+  } catch (err) {
+    console.error(err);
+    res.status(500).json({ error: 'Could not resolve map URL' });
+  }
+});
+
 app.get('/', (req, res) => res.send('Auth server is running!'));
 
 app.listen(PORT, () =>
