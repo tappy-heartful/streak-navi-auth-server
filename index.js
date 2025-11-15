@@ -163,39 +163,6 @@ app.post('/line-login', async (req, res) => {
   }
 });
 
-// -------------------------------------
-// Google Maps 短縮URL → 正規URL展開API
-// -------------------------------------
-app.post('/resolve-map-url', async (req, res) => {
-  const { url } = req.body;
-  if (!url) {
-    return res.status(400).json({ error: 'Missing url' });
-  }
-
-  try {
-    // User-Agent を固定するとモバイル/アプリ誘導の差異が消えて安定する
-    const response = await fetch(url, {
-      method: 'GET',
-      redirect: 'follow',
-      headers: {
-        'User-Agent':
-          'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 ' +
-          '(KHTML, like Gecko) Chrome/120.0 Safari/537.36',
-      },
-    });
-
-    const finalUrl = response.url;
-    if (!finalUrl) {
-      return res.status(500).json({ error: 'Failed to resolve URL' });
-    }
-
-    res.json({ finalUrl });
-  } catch (err) {
-    console.error(err);
-    res.status(500).json({ error: 'Could not resolve map URL' });
-  }
-});
-
 app.get('/', (req, res) => res.send('Auth server is running!'));
 
 app.listen(PORT, () =>
