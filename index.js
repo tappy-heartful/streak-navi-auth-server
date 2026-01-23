@@ -89,12 +89,12 @@ app.get('/get-line-login-url', async (req, res) => {
     } else if (origin === 'https://streak-connect.web.app') {
       // CONNECT本番環境
       redirectUri = encodeURIComponent(
-        'https://streak-navi.web.app/app/ticket/ticket.html',
+        'https://streak-navi.web.app/app/home/home.html',
       );
     } else if (origin === 'https://streak-connect-test.web.app') {
       // CONNECTテスト環境
       redirectUri = encodeURIComponent(
-        'https://streak-connect-test.web.app/app/ticket/ticket.html',
+        'https://streak-connect-test.web.app/app/home/home.html',
       );
     } else {
       return res.status(400).json({ error: 'Invalid origin' });
