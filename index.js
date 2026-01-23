@@ -22,16 +22,17 @@ admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
 
-// CORS設定
+// CORS設定：streak-connectのドメインを追加
 const allowedOrigins = [
   'https://streak-navi.web.app',
   'https://streak-navi-test.web.app',
+  'https://streak-connect.web.app',
+  'https://streak-connect-test.web.app', // テスト環境があれば追加
 ];
 
 app.use(
   cors({
     origin: function (origin, callback) {
-      // originが空（curlや同一オリジン）も許可する場合は origin || '' で対応
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
       } else {
@@ -40,7 +41,7 @@ app.use(
     },
     methods: ['GET', 'POST', 'OPTIONS'],
     allowedHeaders: ['Content-Type'],
-  })
+  }),
 );
 
 app.use(express.json());
@@ -68,20 +69,31 @@ app.get('/get-line-login-url', async (req, res) => {
       .doc(state)
       .set({ createdAt });
 
+    // サイトごとに振り分け
     const origin = req.headers.origin;
     let redirectUri;
     if (origin === 'https://streak-navi-test.web.app') {
       redirectUri = encodeURIComponent(
-        'https://streak-navi-test.web.app/app/login/login.html'
+        'https://streak-navi-test.web.app/app/login/login.html',
+      );
+    } else if (origin === 'https://streak-navi.web.app') {
+      redirectUri = encodeURIComponent(
+        'https://streak-navi.web.app/app/login/login.html',
+      );
+    } else if (origin === 'https://streak-connect-test.web.app') {
+      redirectUri = encodeURIComponent(
+        'https://streak-connect-test.web.app/app/ticket/ticket.html',
+      );
+    } else if (origin === 'https://streak-connect.web.app') {
+      redirectUri = encodeURIComponent(
+        'https://streak-navi.web.app/app/ticket/ticket.html',
       );
     } else {
-      redirectUri = encodeURIComponent(
-        'https://streak-navi.web.app/app/login/login.html'
-      );
+      return res.status(400).json({ error: 'Invalid origin' });
     }
 
     const scope = 'openid profile';
-    const loginUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${LINE_CLIENT_ID}&redirect_uri=${redirectUri}&state=${state}&scope=${scope}`;
+    const loginUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${LINE_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=${scope}`;
 
     res.json({ loginUrl, state });
   } catch (err) {
@@ -152,6 +164,7 @@ app.post('/line-login', async (req, res) => {
     const profile = await profileRes.json();
 
     // 5. Firebase カスタムトークン作成
+    // 同一チャネルかつ同一SALT/PEPPERなので、Naviと同じUIDが生成される
     const hashedUserId = hashUserIdWithSaltPepper(verifyData.sub);
     const customToken = await admin.auth().createCustomToken(hashedUserId);
 
@@ -163,8 +176,10 @@ app.post('/line-login', async (req, res) => {
   }
 });
 
-app.get('/', (req, res) => res.send('Auth server is running!'));
+app.get('/', (req, res) =>
+  res.send('Unified Auth server (Navi & Connect) is running!'),
+);
 
 app.listen(PORT, () =>
-  console.log(`Server running at http://localhost:${PORT}`)
+  console.log(`Server running at http://localhost:${PORT}`),
 );
