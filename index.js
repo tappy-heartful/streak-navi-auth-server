@@ -22,12 +22,12 @@ admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
 
-// CORS設定：streak-connectのドメインを追加
+// CORS設定
 const allowedOrigins = [
   'https://streak-navi.web.app',
   'https://streak-navi-test.web.app',
   'https://streak-connect.web.app',
-  'https://streak-connect-test.web.app', // テスト環境があれば追加
+  'https://streak-connect-test.web.app',
 ];
 
 app.use(
@@ -57,46 +57,29 @@ function hashUserIdWithSaltPepper(userId) {
 // -------------------------------------
 // 1. クライアント用: state生成＆LINEログインURL返却
 // -------------------------------------
+// フロントエンドからは get-line-login-url?redirectAfterLogin=... で呼び出す想定
 app.get('/get-line-login-url', async (req, res) => {
   try {
+    const origin = req.headers.origin;
+    // フロントから渡された「最終的な戻り先（チケット詳細など）」
+    const redirectAfterLogin = req.query.redirectAfterLogin || '';
+
     const state = crypto.randomBytes(16).toString('hex');
     const createdAt = admin.firestore.FieldValue.serverTimestamp();
 
-    // Firestoreにstate保存
-    await admin
-      .firestore()
-      .collection('oauthStates')
-      .doc(state)
-      .set({ createdAt });
+    // Firestoreにstateと一緒に戻り先URLを保存
+    await admin.firestore().collection('oauthStates').doc(state).set({
+      createdAt,
+      origin,
+      redirectAfterLogin,
+    });
 
-    // サイトごとに振り分け
-    const origin = req.headers.origin;
-    let redirectUri;
-    if (origin === 'https://streak-navi.web.app') {
-      // NAVI本番環境
-      redirectUri = encodeURIComponent(
-        'https://streak-navi.web.app/app/login/login.html',
-      );
-    } else if (origin === 'https://streak-navi-test.web.app') {
-      // NAVIテスト環境
-      redirectUri = encodeURIComponent(
-        'https://streak-navi-test.web.app/app/login/login.html',
-      );
-    } else if (origin === 'https://streak-connect.web.app') {
-      // CONNECT本番環境
-      redirectUri = encodeURIComponent(
-        'https://streak-navi.web.app/app/ticket/ticket.html',
-      );
-    } else if (origin === 'https://streak-connect-test.web.app') {
-      // CONNECTテスト環境
-      redirectUri = encodeURIComponent(
-        'https://streak-connect-test.web.app/app/ticket/ticket.html',
-      );
-    } else {
-      return res.status(400).json({ error: 'Invalid origin' });
-    }
+    // LINE公式に設定するCallback URL（ここは固定パスである必要があります）
+    let callbackPath = '/app/login/login.html';
+    let redirectUri = `${origin.replace(/\/$/, '')}${callbackPath}`;
 
     const scope = 'openid profile';
+    // redirect_uri は1回だけ encodeURIComponent する
     const loginUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${LINE_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=${scope}`;
 
     res.json({ loginUrl, state });
@@ -118,15 +101,18 @@ app.post('/line-login', async (req, res) => {
   }
 
   try {
-    // 1. state検証
+    // 1. state検証（保存していたリダイレクト先を取得）
     const stateDoc = await admin
       .firestore()
       .collection('oauthStates')
       .doc(state)
       .get();
+
     if (!stateDoc.exists) {
       return res.status(400).json({ error: 'Invalid or expired state' });
     }
+
+    const stateData = stateDoc.data();
     // 検証済みなので削除
     await admin.firestore().collection('oauthStates').doc(state).delete();
 
@@ -168,12 +154,15 @@ app.post('/line-login', async (req, res) => {
     const profile = await profileRes.json();
 
     // 5. Firebase カスタムトークン作成
-    // 同一チャネルかつ同一SALT/PEPPERなので、Naviと同じUIDが生成される
     const hashedUserId = hashUserIdWithSaltPepper(verifyData.sub);
     const customToken = await admin.auth().createCustomToken(hashedUserId);
 
-    // 6. フロントへ返却
-    res.json({ customToken, profile });
+    // 6. フロントへ返却（保存していた redirectAfterLogin も一緒に返す）
+    res.json({
+      customToken,
+      profile,
+      redirectAfterLogin: stateData.redirectAfterLogin,
+    });
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Server error' });
