@@ -84,7 +84,7 @@ app.get('/get-line-login-url', async (req, res) => {
       redirectUri = 'https://streak-navi-test.web.app/app/login/login.html';
     } else if (origin === 'https://streak-connect.web.app') {
       // CONNECT本番環境
-      redirectUri = 'https://streak-navi.web.app/app/home/home.html';
+      redirectUri = 'https://streak-connect.web.app/app/home/home.html';
     } else if (origin === 'https://streak-connect-test.web.app') {
       // CONNECTテスト環境
       redirectUri = 'https://streak-connect-test.web.app/app/home/home.html';
