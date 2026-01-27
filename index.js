@@ -171,7 +171,21 @@ app.post('/line-login', async (req, res) => {
     const hashedUserId = hashUserIdWithSaltPepper(verifyData.sub);
     const customToken = await admin.auth().createCustomToken(hashedUserId);
 
-    // 6. フロントへ返却（保存していた redirectAfterLogin も一緒に返す）
+    // 6. GASでのメッセージ送信用の紐付けデータを保存
+    // usersコレクションとは別に持ち、セキュリティルールで守る
+    await admin
+      .firestore()
+      .collection('lineMessagingIds')
+      .doc(hashedUserId)
+      .set(
+        {
+          lineUid: rawLineUid,
+          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+        },
+        { merge: true },
+      );
+
+    // 7. フロントへ返却（保存していた redirectAfterLogin も一緒に返す）
     res.json({
       customToken,
       profile,
