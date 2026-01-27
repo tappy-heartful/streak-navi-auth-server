@@ -168,16 +168,12 @@ app.post('/line-login', async (req, res) => {
     const profile = await profileRes.json();
 
     // 5. Firebase カスタムトークン作成
-    const rawLineUid = verifyData.sub;
+    const rawLineUid = verifyData.sub; // 生のLINE UID
     const hashedUserId = hashUserIdWithSaltPepper(rawLineUid);
     const customToken = await admin.auth().createCustomToken(hashedUserId);
 
-    // ログイン元のサイトを判定
-    const origin = stateData.origin || '';
-    const siteLabel = origin.includes('streak-connect') ? 'connect' : 'navi';
-
-    // メッセージング用IDの保存
-    // どちらのユーザーか判別できるフィールド（appSource）を追加
+    // 【追加】GASでのメッセージ送信用の紐付けデータを保存
+    // usersコレクションとは別に持ち、セキュリティルールで守る
     await admin
       .firestore()
       .collection('lineMessagingIds')
@@ -185,7 +181,6 @@ app.post('/line-login', async (req, res) => {
       .set(
         {
           lineUid: rawLineUid,
-          appSource: siteLabel, // 'connect' か 'navi'
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         },
         { merge: true },
