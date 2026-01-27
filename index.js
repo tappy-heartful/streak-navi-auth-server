@@ -168,10 +168,11 @@ app.post('/line-login', async (req, res) => {
     const profile = await profileRes.json();
 
     // 5. Firebase カスタムトークン作成
-    const hashedUserId = hashUserIdWithSaltPepper(verifyData.sub);
+    const rawLineUid = verifyData.sub; // 生のLINE UID
+    const hashedUserId = hashUserIdWithSaltPepper(rawLineUid);
     const customToken = await admin.auth().createCustomToken(hashedUserId);
 
-    // 6. GASでのメッセージ送信用の紐付けデータを保存
+    // 【追加】GASでのメッセージ送信用の紐付けデータを保存
     // usersコレクションとは別に持ち、セキュリティルールで守る
     await admin
       .firestore()
