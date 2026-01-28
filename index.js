@@ -194,7 +194,8 @@ app.post('/line-login', async (req, res) => {
       .set(
         {
           lineUid: rawLineUid,
-          source: stateData.origin.includes('streak-navi') ? 'navi' : 'connect',
+          isNavi: stateData.origin.includes('streak-navi'),
+          isConnect: stateData.origin.includes('streak-connect'),
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         },
         { merge: true },
