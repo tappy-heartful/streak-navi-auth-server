@@ -10,8 +10,7 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-const LINE_CLIENT_ID = process.env.LINE_CLIENT_ID;
-const LINE_CLIENT_SECRET = process.env.LINE_CLIENT_SECRET;
+// 固定値
 const FIXED_SALT = process.env.SALT;
 const FIXED_PEPPER = process.env.PEPPER;
 
@@ -46,6 +45,22 @@ app.use(
 
 app.use(express.json());
 
+// 補助関数: OriginからNaviかConnectかを判定し、適切なID/Secretを返す
+function getLineCredentials(origin) {
+  if (origin && origin.includes('streak-navi')) {
+    return {
+      clientId: process.env.LINE_CLIENT_ID_NAVI,
+      clientSecret: process.env.LINE_CLIENT_SECRET_NAVI,
+    };
+  } else {
+    // デフォルト、またはConnect系
+    return {
+      clientId: process.env.LINE_CLIENT_ID_CONNECT,
+      clientSecret: process.env.LINE_CLIENT_SECRET_CONNECT,
+    };
+  }
+}
+
 // SALT+PEPPERでハッシュ化
 function hashUserIdWithSaltPepper(userId) {
   return crypto
@@ -57,17 +72,17 @@ function hashUserIdWithSaltPepper(userId) {
 // -------------------------------------
 // 1. クライアント用: state生成＆LINEログインURL返却
 // -------------------------------------
-// フロントエンドからは get-line-login-url?redirectAfterLogin=... で呼び出す想定
 app.get('/get-line-login-url', async (req, res) => {
   try {
     const origin = req.headers.origin;
-    // フロントから渡された「最終的な戻り先（チケット詳細など）」
     const redirectAfterLogin = req.query.redirectAfterLogin || '';
+
+    // Originに基づいて使用するLINEチャネルを選択
+    const { clientId } = getLineCredentials(origin);
 
     const state = crypto.randomBytes(16).toString('hex');
     const createdAt = admin.firestore.FieldValue.serverTimestamp();
 
-    // Firestoreにstateと一緒に戻り先URLを保存
     await admin.firestore().collection('oauthStates').doc(state).set({
       createdAt,
       origin,
@@ -93,8 +108,7 @@ app.get('/get-line-login-url', async (req, res) => {
     }
 
     const scope = 'openid profile';
-    // redirect_uri は1回だけ encodeURIComponent する
-    const loginUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${LINE_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=${scope}`;
+    const loginUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=${scope}`;
 
     res.json({ loginUrl, state });
   } catch (err) {
@@ -115,22 +129,22 @@ app.post('/line-login', async (req, res) => {
   }
 
   try {
-    // 1. state検証（保存していたリダイレクト先を取得）
+    // 1. state検証
     const stateDoc = await admin
       .firestore()
       .collection('oauthStates')
       .doc(state)
       .get();
-
     if (!stateDoc.exists) {
       return res.status(400).json({ error: 'Invalid or expired state' });
     }
-
     const stateData = stateDoc.data();
-    // 検証済みなので削除
     await admin.firestore().collection('oauthStates').doc(state).delete();
 
-    // 2. LINEアクセストークン取得
+    // 2. Originに基づいて適切な認証情報を取得
+    const { clientId, clientSecret } = getLineCredentials(stateData.origin);
+
+    // 3. LINEアクセストークン取得
     const tokenRes = await fetch('https://api.line.me/oauth2/v2.1/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -138,8 +152,8 @@ app.post('/line-login', async (req, res) => {
         grant_type: 'authorization_code',
         code,
         redirect_uri: redirectUri,
-        client_id: LINE_CLIENT_ID,
-        client_secret: LINE_CLIENT_SECRET,
+        client_id: clientId,
+        client_secret: clientSecret,
       }),
     });
     const tokenData = await tokenRes.json();
@@ -147,13 +161,13 @@ app.post('/line-login', async (req, res) => {
       return res.status(401).json({ error: 'Token exchange failed' });
     }
 
-    // 3. IDトークン検証
+    // 4. IDトークン検証
     const verifyRes = await fetch('https://api.line.me/oauth2/v2.1/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
       body: new URLSearchParams({
         id_token: tokenData.id_token,
-        client_id: LINE_CLIENT_ID,
+        client_id: clientId,
       }),
     });
     const verifyData = await verifyRes.json();
@@ -161,19 +175,18 @@ app.post('/line-login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid ID token' });
     }
 
-    // 4. プロフィール取得
+    // 5. プロフィール取得
     const profileRes = await fetch('https://api.line.me/v2/profile', {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
     const profile = await profileRes.json();
 
-    // 5. Firebase カスタムトークン作成
-    const rawLineUid = verifyData.sub; // 生のLINE UID
+    // 6. Firebase カスタムトークン作成
+    const rawLineUid = verifyData.sub;
     const hashedUserId = hashUserIdWithSaltPepper(rawLineUid);
     const customToken = await admin.auth().createCustomToken(hashedUserId);
 
-    // 【追加】GASでのメッセージ送信用の紐付けデータを保存
-    // usersコレクションとは別に持ち、セキュリティルールで守る
+    // 7. LINE UID紐付けデータの保存
     await admin
       .firestore()
       .collection('lineMessagingIds')
@@ -181,6 +194,7 @@ app.post('/line-login', async (req, res) => {
       .set(
         {
           lineUid: rawLineUid,
+          source: stateData.origin.includes('streak-navi') ? 'navi' : 'connect',
           updatedAt: admin.firestore.FieldValue.serverTimestamp(),
         },
         { merge: true },
@@ -199,7 +213,9 @@ app.post('/line-login', async (req, res) => {
 });
 
 app.get('/', (req, res) =>
-  res.send('Unified Auth server (Navi & Connect) is running!'),
+  res.send(
+    'Unified Auth server (Navi & Connect) with Dual LINE Channels is running!',
+  ),
 );
 
 app.listen(PORT, () =>
