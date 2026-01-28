@@ -187,19 +187,23 @@ app.post('/line-login', async (req, res) => {
     const customToken = await admin.auth().createCustomToken(hashedUserId);
 
     // 7. LINE UID紐付けデータの保存
+    const isNavi = stateData.origin.includes('streak-navi');
+    const isConnect = stateData.origin.includes('streak-connect');
+
+    const updateData = {
+      lineUid: rawLineUid,
+      updatedAt: admin.firestore.FieldValue.serverTimestamp(),
+    };
+
+    // 該当するフラグだけを true に設定（もう一方は含めないことで既存の値を維持）
+    if (isNavi) updateData.isNavi = true;
+    if (isConnect) updateData.isConnect = true;
+
     await admin
       .firestore()
       .collection('lineMessagingIds')
       .doc(hashedUserId)
-      .set(
-        {
-          lineUid: rawLineUid,
-          isNavi: stateData.origin.includes('streak-navi'),
-          isConnect: stateData.origin.includes('streak-connect'),
-          updatedAt: admin.firestore.FieldValue.serverTimestamp(),
-        },
-        { merge: true },
-      );
+      .set(updateData, { merge: true });
 
     // 7. フロントへ返却（保存していた redirectAfterLogin も一緒に返す）
     res.json({
