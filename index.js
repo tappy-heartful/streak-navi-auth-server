@@ -92,9 +92,12 @@ app.get('/get-line-login-url', async (req, res) => {
 
     // サイトごとに振り分け
     let redirectUri;
-    if (origin.includes('localhost:3000')) {
-      // ローカル開発時：Next.jsのcallbackルートへ
-      redirectUri = 'http://localhost:3000/callback';
+    if (origin.includes('localhost:3000/connect')) {
+      // ローカル開発時：Next.jsのcallbackルートへ(connect)
+      redirectUri = 'http://localhost:3000/connect/callback';
+    } else if (origin.includes('localhost:3000/navi')) {
+      // ローカル開発時：Next.jsのcallbackルートへ(navi)
+      redirectUri = 'http://localhost:3000/navi/callback';
     } else if (origin === 'https://streak-navi.web.app') {
       // NAVI本番環境
       redirectUri = 'https://streak-navi.web.app/app/login/login.html';
