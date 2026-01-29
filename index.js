@@ -27,7 +27,8 @@ const allowedOrigins = [
   'https://streak-navi-test.web.app',
   'https://streak-connect.web.app',
   'https://streak-connect-test.web.app',
-  'http://localhost:3000',
+  'http://localhost:3000/connect',
+  'http://localhost:3000/navi',
 ];
 
 app.use(
