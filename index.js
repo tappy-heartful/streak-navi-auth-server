@@ -27,8 +27,7 @@ const allowedOrigins = [
   'https://streak-navi-test.web.app',
   'https://streak-connect.web.app',
   'https://streak-connect-test.web.app',
-  'http://localhost:3000/connect',
-  'http://localhost:3000/navi',
+  'http://localhost:3000',
 ];
 
 app.use(
@@ -93,7 +92,7 @@ app.get('/get-line-login-url', async (req, res) => {
 
     // サイトごとに振り分け
     let redirectUri;
-    if (origin.includes('localhost:3000/connect')) {
+    if (origin.includes('localhost:3000')) {
       // ローカル開発時：Next.jsのcallbackルートへ(connect)
       redirectUri = 'http://localhost:3000/connect/callback';
     } else if (origin.includes('localhost:3000/navi')) {
