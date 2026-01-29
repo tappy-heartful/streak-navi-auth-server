@@ -27,6 +27,7 @@ const allowedOrigins = [
   'https://streak-navi-test.web.app',
   'https://streak-connect.web.app',
   'https://streak-connect-test.web.app',
+  'http://localhost:3000',
 ];
 
 app.use(
@@ -91,7 +92,10 @@ app.get('/get-line-login-url', async (req, res) => {
 
     // サイトごとに振り分け
     let redirectUri;
-    if (origin === 'https://streak-navi.web.app') {
+    if (origin.includes('localhost:3000')) {
+      // ローカル開発時：Next.jsのcallbackルートへ
+      redirectUri = 'http://localhost:3000/callback';
+    } else if (origin === 'https://streak-navi.web.app') {
       // NAVI本番環境
       redirectUri = 'https://streak-navi.web.app/app/login/login.html';
     } else if (origin === 'https://streak-navi-test.web.app') {
