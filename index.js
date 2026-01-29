@@ -21,8 +21,10 @@ admin.initializeApp({
   credential: admin.credential.cert(serviceAccount),
 });
 
-// CORS設定
+// CORS設定（Vercelの新ドメインを追加）
 const allowedOrigins = [
+  'https://ssjo.vercel.app',
+  'https://ssjo-test.vercel.app',
   'https://streak-navi.web.app',
   'https://streak-navi-test.web.app',
   'https://streak-connect.web.app',
@@ -46,15 +48,15 @@ app.use(
 
 app.use(express.json());
 
-// 補助関数: OriginからNaviかConnectかを判定し、適切なID/Secretを返す
-function getLineCredentials(origin) {
-  if (origin && origin.includes('streak-navi')) {
+// 補助関数: OriginまたはパラメータからNaviかConnectかを判定
+function getLineCredentials(origin, appType = '') {
+  // 明示的なappType指定があるか、URLにnaviが含まれる場合はNavi用チャネルを使用
+  if (appType === 'navi' || (origin && origin.includes('navi'))) {
     return {
       clientId: process.env.LINE_CLIENT_ID_NAVI,
       clientSecret: process.env.LINE_CLIENT_SECRET_NAVI,
     };
   } else {
-    // デフォルト、またはConnect系
     return {
       clientId: process.env.LINE_CLIENT_ID_CONNECT,
       clientSecret: process.env.LINE_CLIENT_SECRET_CONNECT,
@@ -75,11 +77,11 @@ function hashUserIdWithSaltPepper(userId) {
 // -------------------------------------
 app.get('/get-line-login-url', async (req, res) => {
   try {
-    const origin = req.headers.origin;
+    const origin = req.headers.origin || '';
+    const appType = req.query.appType || ''; // フロント側から ?appType=navi などで送ることを推奨
     const redirectAfterLogin = req.query.redirectAfterLogin || '';
 
-    // Originに基づいて使用するLINEチャネルを選択
-    const { clientId } = getLineCredentials(origin);
+    const { clientId } = getLineCredentials(origin, appType);
 
     const state = crypto.randomBytes(16).toString('hex');
     const createdAt = admin.firestore.FieldValue.serverTimestamp();
@@ -87,37 +89,37 @@ app.get('/get-line-login-url', async (req, res) => {
     await admin.firestore().collection('oauthStates').doc(state).set({
       createdAt,
       origin,
+      appType,
       redirectAfterLogin,
     });
 
-    // サイトごとに振り分け
     let redirectUri;
+    const isNavi = appType === 'navi' || origin.includes('navi');
+
+    // リダイレクト先URLの振り分けロジック
     if (origin.includes('localhost:3000')) {
-      // ローカル開発時：Next.jsのcallbackルートへ(connect)
-      redirectUri = 'http://localhost:3000/connect/callback';
-    } else if (origin.includes('localhost:3000/navi')) {
-      // ローカル開発時：Next.jsのcallbackルートへ(navi)
-      redirectUri = 'http://localhost:3000/navi/callback';
-    } else if (origin === 'https://streak-navi.web.app') {
-      // NAVI本番環境
-      redirectUri = 'https://streak-navi.web.app/app/login/login.html';
-    } else if (origin === 'https://streak-navi-test.web.app') {
-      // NAVIテスト環境
-      redirectUri = 'https://streak-navi-test.web.app/app/login/login.html';
-    } else if (origin === 'https://streak-connect.web.app') {
-      // CONNECT本番環境
-      redirectUri = 'https://streak-connect.web.app/app/home/home.html';
-    } else if (origin === 'https://streak-connect-test.web.app') {
-      // CONNECTテスト環境
-      redirectUri = 'https://streak-connect-test.web.app/app/home/home.html';
+      redirectUri = isNavi
+        ? 'http://localhost:3000/navi/callback'
+        : 'http://localhost:3000/connect/callback';
+    } else if (origin.includes('ssjo.vercel.app')) {
+      redirectUri = isNavi
+        ? 'https://ssjo.vercel.app/navi/callback'
+        : 'https://ssjo.vercel.app/connect/callback';
+    } else if (origin.includes('ssjo-test.vercel.app')) {
+      redirectUri = isNavi
+        ? 'https://ssjo-test.vercel.app/navi/callback'
+        : 'https://ssjo-test.vercel.app/connect/callback';
+    } else if (origin.includes('streak-navi')) {
+      redirectUri = `${origin}/app/login/login.html`;
     } else {
-      return res.status(400).json({ error: 'Invalid origin' });
+      // デフォルト（旧Connectなど）
+      redirectUri = `${origin}/app/home/home.html`;
     }
 
     const scope = 'openid profile';
     const loginUrl = `https://access.line.me/oauth2/v2.1/authorize?response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=${scope}`;
 
-    res.json({ loginUrl, state });
+    res.json({ loginUrl, state, redirectUri }); // デバッグ用にredirectUriも返す
   } catch (err) {
     console.error(err);
     res.status(500).json({ error: 'Failed to generate login URL' });
@@ -136,7 +138,6 @@ app.post('/line-login', async (req, res) => {
   }
 
   try {
-    // 1. state検証
     const stateDoc = await admin
       .firestore()
       .collection('oauthStates')
@@ -148,10 +149,11 @@ app.post('/line-login', async (req, res) => {
     const stateData = stateDoc.data();
     await admin.firestore().collection('oauthStates').doc(state).delete();
 
-    // 2. Originに基づいて適切な認証情報を取得
-    const { clientId, clientSecret } = getLineCredentials(stateData.origin);
+    const { clientId, clientSecret } = getLineCredentials(
+      stateData.origin,
+      stateData.appType,
+    );
 
-    // 3. LINEアクセストークン取得
     const tokenRes = await fetch('https://api.line.me/oauth2/v2.1/token', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -168,7 +170,6 @@ app.post('/line-login', async (req, res) => {
       return res.status(401).json({ error: 'Token exchange failed' });
     }
 
-    // 4. IDトークン検証
     const verifyRes = await fetch('https://api.line.me/oauth2/v2.1/verify', {
       method: 'POST',
       headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
@@ -182,27 +183,25 @@ app.post('/line-login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid ID token' });
     }
 
-    // 5. プロフィール取得
     const profileRes = await fetch('https://api.line.me/v2/profile', {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
     const profile = await profileRes.json();
 
-    // 6. Firebase カスタムトークン作成
     const rawLineUid = verifyData.sub;
     const hashedUserId = hashUserIdWithSaltPepper(rawLineUid);
     const customToken = await admin.auth().createCustomToken(hashedUserId);
 
-    // 7. LINE UID紐付けデータの保存
-    const isNavi = stateData.origin.includes('streak-navi');
-    const isConnect = stateData.origin.includes('streak-connect');
+    // 判定ロジック
+    const isNavi =
+      stateData.appType === 'navi' || stateData.origin.includes('navi');
+    const isConnect = stateData.appType === 'connect' || !isNavi;
 
     const updateData = {
       lineUid: rawLineUid,
       updatedAt: admin.firestore.FieldValue.serverTimestamp(),
     };
 
-    // 該当するフラグだけを true に設定（もう一方は含めないことで既存の値を維持）
     if (isNavi) updateData.isNavi = true;
     if (isConnect) updateData.isConnect = true;
 
@@ -212,7 +211,6 @@ app.post('/line-login', async (req, res) => {
       .doc(hashedUserId)
       .set(updateData, { merge: true });
 
-    // 7. フロントへ返却（保存していた redirectAfterLogin も一緒に返す）
     res.json({
       customToken,
       profile,
@@ -224,11 +222,7 @@ app.post('/line-login', async (req, res) => {
   }
 });
 
-app.get('/', (req, res) =>
-  res.send(
-    'Unified Auth server (Navi & Connect) with Dual LINE Channels is running!',
-  ),
-);
+app.get('/', (req, res) => res.send('SSJO Unified Auth Server is running!'));
 
 app.listen(PORT, () =>
   console.log(`Server running at http://localhost:${PORT}`),
