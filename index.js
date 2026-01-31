@@ -117,7 +117,7 @@ app.get('/get-line-login-url', async (req, res) => {
     }
 
     const scope = 'openid profile';
-    const loginUrl = `https://access.line.me/oauth2/v2.1/authorize?&bot_prompt=aggressive&response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=${scope}`;
+    const loginUrl = `https://access.line.me/oauth2/v2.1/authorize?bot_prompt=aggressive&response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=${scope}`;
 
     res.json({ loginUrl, state, redirectUri }); // デバッグ用にredirectUriも返す
   } catch (err) {
