@@ -183,6 +183,26 @@ app.post('/line-login', async (req, res) => {
       return res.status(401).json({ error: 'Invalid ID token' });
     }
 
+    // TODO検討中 友達追加を必須にするかどうか
+    // NAVI：別に全体ラインでよくね？
+    // CONNECT：お客さんに強要するのは違くね？
+    // // 友だち状態の確認
+    // const friendshipRes = await fetch(
+    //   'https://api.line.me/friendship/v2.1/status',
+    //   {
+    //     headers: { Authorization: `Bearer ${tokenData.access_token}` },
+    //   },
+    // );
+    // const friendshipData = await friendshipRes.json();
+
+    // // 友だちではない(friendFlagがfalse)場合、エラーを返してログインを拒否する
+    // if (!friendshipData.friendFlag) {
+    //   return res.status(403).json({
+    //     error: 'FRIEND_REQUIRED',
+    //     message: '公式アカウントを友だち追加してください。',
+    //   });
+    // }
+
     const profileRes = await fetch('https://api.line.me/v2/profile', {
       headers: { Authorization: `Bearer ${tokenData.access_token}` },
     });
