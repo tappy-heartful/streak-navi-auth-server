@@ -96,7 +96,7 @@ app.get('/get-line-login-url', async (req, res) => {
 
     let redirectUri;
     // リダイレクト先URLの振り分けロジック
-    if (origin.includes('vercel.app') && origin.includes('localhost')) {
+    if (origin.includes('vercel.app') || origin.includes('localhost')) {
       // 開発環境
       redirectUri = `${origin}/callback`;
     } else if (origin.includes('streak-navi')) {
