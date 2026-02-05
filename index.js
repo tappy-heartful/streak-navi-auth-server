@@ -30,6 +30,7 @@ const allowedOrigins = [
   'https://streak-connect.web.app',
   'https://streak-connect-test.web.app',
   'http://localhost:3000',
+  'http://localhost:3001',
 ];
 
 app.use(
