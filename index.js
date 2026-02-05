@@ -80,7 +80,8 @@ app.get('/get-line-login-url', async (req, res) => {
     const origin = req.headers.origin || '';
     const redirectAfterLogin = req.query.redirectAfterLogin || '';
     const appType = req.query.appType || '';
-    const isConnect = appType === 'connect';
+    const isNext = appType.includes('next');
+    const isConnect = appType.includes('connect');
 
     const { clientId } = getLineCredentials(origin);
 
@@ -94,18 +95,10 @@ app.get('/get-line-login-url', async (req, res) => {
       appType,
     });
 
-    let redirectUri;
-    // リダイレクト先URLの振り分けロジック
-    if (origin.includes('vercel.app') || origin.includes('localhost')) {
-      // 開発環境
-      redirectUri = `${origin}/callback`;
-    } else if (origin.includes('streak-navi')) {
-      // Streak Navi（旧）
-      redirectUri = `${origin}/app/login/login.html`;
-    } else {
-      // Streak Connect（旧）
-      redirectUri = `${origin}/app/home/home.html`;
-    }
+    // リダイレクトURIの決定 TODO旧環境用のは削除
+    let redirectUri = isNext
+      ? `${origin}/callback`
+      : `${origin}/app/login/login.html`;
 
     const scope = 'openid profile';
     const loginUrl = `https://access.line.me/oauth2/v2.1/authorize?bot_prompt=${isConnect ? 'normal' : 'aggressive'}&response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=${scope}`;
