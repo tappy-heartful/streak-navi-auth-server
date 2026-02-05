@@ -79,6 +79,8 @@ app.get('/get-line-login-url', async (req, res) => {
   try {
     const origin = req.headers.origin || '';
     const redirectAfterLogin = req.query.redirectAfterLogin || '';
+    const appType = req.query.appType || '';
+    const isConnect = appType === 'connect';
 
     const { clientId } = getLineCredentials(origin);
 
@@ -89,25 +91,14 @@ app.get('/get-line-login-url', async (req, res) => {
       createdAt,
       origin,
       redirectAfterLogin,
+      appType,
     });
 
     let redirectUri;
     // リダイレクト先URLの振り分けロジック
-    if (origin.includes('localhost:3000')) {
+    if (origin.includes('vercel.app') && origin.includes('localhost')) {
       // 開発環境
-      redirectUri = 'http://localhost:3000/callback';
-    } else if (origin.includes('ssjo.vercel.app')) {
-      // Streak Connect
-      redirectUri = 'https://ssjo.vercel.app/callback';
-    } else if (origin.includes('ssjo-test.vercel.app')) {
-      // Streak Connect Test
-      redirectUri = 'https://ssjo-test.vercel.app/callback';
-    } else if (origin.includes('streak-navi.vercel.app')) {
-      // Streak Navi
-      redirectUri = 'https://streak-navi.vercel.app/callback';
-    } else if (origin.includes('streak-navi-test.vercel.app')) {
-      // Streak Navi Test
-      redirectUri = 'https://streak-navi-test.vercel.app/callback';
+      redirectUri = `${origin}/callback`;
     } else if (origin.includes('streak-navi')) {
       // Streak Navi（旧）
       redirectUri = `${origin}/app/login/login.html`;
@@ -117,7 +108,9 @@ app.get('/get-line-login-url', async (req, res) => {
     }
 
     const scope = 'openid profile';
-    const loginUrl = `https://access.line.me/oauth2/v2.1/authorize?bot_prompt=normal&response_type=code&client_id=${clientId}&redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=${scope}`;
+    const loginUrl = `https://access.line.me/oauth2/v2.1/authorize
+                      ?bot_prompt=${isConnect ? 'normal' : 'aggressive'}&response_type=code&client_id=${clientId}
+                      &redirect_uri=${encodeURIComponent(redirectUri)}&state=${state}&scope=${scope}`;
 
     res.json({ loginUrl, state, redirectUri }); // デバッグ用にredirectUriも返す
   } catch (err) {
