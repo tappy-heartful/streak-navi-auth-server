@@ -82,7 +82,6 @@ app.get('/get-line-login-url', async (req, res) => {
     const redirectAfterLogin = req.query.redirectAfterLogin || '';
     const appType = req.query.appType || '';
     const isNext = appType.includes('next');
-    const isConnect = appType.includes('connect');
 
     const { clientId } = getLineCredentials(origin);
 
