@@ -25,10 +25,10 @@ admin.initializeApp({
 const allowedOrigins = [
   'https://ssjo.vercel.app',
   'https://ssjo-test.vercel.app',
+  'https://streak-navi.vercel.app',
+  'https://streak-navi-test.vercel.app',
   'https://streak-navi.web.app',
   'https://streak-navi-test.web.app',
-  'https://streak-connect.web.app',
-  'https://streak-connect-test.web.app',
   'http://localhost:3000',
   'http://localhost:3001',
 ];
